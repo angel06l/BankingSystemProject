@@ -7,20 +7,43 @@
 #include <sstream>
 using namespace std;
 
+
+
+/**
+ * Utility class to handle interest calculation for savings accounts.
+ */
+// InterestCalculator class
+class InterestCalculator {
+public:
+    static double calculateInterest(double balance, double rate) {
+        return balance * (rate / 100.0);
+    }
+};
+
+/**
+ * Utility class to enforce overdraft rules in checking accounts.
+ */
+// OverdraftProtection class
+class OverdraftProtection {
+public:
+    static bool canWithdraw(double balance, double overdraft, double amount) {
+        return amount <= (balance + overdraft);
+    }
+};
+
 /**
  * Base class representing a generic bank account.
- * Provides common functionality for all account types.
  * Implements polymorphic behavior through virtual functions.
+ * Provides common interface for all account types.
  */
+// Base class for bank accounts
 class BankAccount {
 protected:
     string owner;
     double balance;
     list<string> transactionHistory;
 
-    /**
-     * Formats a monetary amount to two decimal places.
-     */
+    // Helper method to format currency with two decimal places
     string formatAmount(double amount) const {
         ostringstream stream;
         stream << fixed << setprecision(2) << amount;
@@ -29,23 +52,19 @@ protected:
 
 public:
     BankAccount(string name, double initialBalance) : owner(name), balance(initialBalance) {}
-    virtual ~BankAccount() = default; // Ensures proper cleanup in derived classes
+    virtual ~BankAccount() = default;   // Virtual destructor for proper cleanup of derived classes
 
-    // Pure virtual functions for deposit, withdrawal, and display (polymorphism)
+    // Pure virtual methods to be implemented by derived classes
     virtual void deposit(double amount) = 0;
     virtual void withdraw(double amount) = 0;
     virtual void display() const = 0;
 
-    /**
-     * Adds a transaction to the account's history.
-     */
+    // Records a transaction in the account's history
     void addTransaction(const string& transaction) {
         transactionHistory.push_back(transaction);
     }
 
-    /**
-     * Displays the transaction history of the account.
-     */
+    // Displays all past transactions for this account
     void displayTransactionHistory() const {
         cout << "Transaction History for " << owner << ":\n";
         for (const auto& transaction : transactionHistory) {
@@ -53,15 +72,17 @@ public:
         }
     }
 
-    // Getters for account balance and owner name
+    // Accessors
     double getBalance() const { return balance; }
     string getOwner() const { return owner; }
 };
 
 /**
  * Derived class representing a savings account.
- * Implements specific deposit and withdrawal behaviors.
+ * Inherits from BankAccount and provides specific functionality
+ * including interest calculation and standard deposit/withdrawal.
  */
+// Derived class for savings accounts
 class SavingsAccount : public BankAccount {
 private:
     double interestRate;
@@ -71,11 +92,13 @@ public:
         : BankAccount(name, balance), interestRate(rate) {
     }
 
+    // Adds funds to the account
     void deposit(double amount) override {
         balance += amount;
         addTransaction("Deposited: $" + formatAmount(amount));
     }
 
+    // Withdraws funds from the account if sufficient balance exists
     void withdraw(double amount) override {
         if (amount > balance)
             throw runtime_error("Insufficient funds");
@@ -83,16 +106,25 @@ public:
         addTransaction("Withdrawn: $" + formatAmount(amount));
     }
 
+    // Applies interest to the account using InterestCalculator
+    void applyInterest() {
+        double interest = InterestCalculator::calculateInterest(balance, interestRate);
+        deposit(interest);
+        addTransaction("Interest Applied: $" + formatAmount(interest));
+    }
+
+    // Displays account information
     void display() const override {
-        cout << "Savings Account: " << owner << " | Balance: $" << fixed
-            << setprecision(2) << balance << " | Interest Rate: " << interestRate << "%\n";
+        cout << "Savings Account: " << owner << " | Balance: $" << fixed << setprecision(2) << balance
+            << " | Interest Rate: " << interestRate << "%\n";
     }
 };
 
 /**
  * Derived class representing a checking account.
- * Implements specific withdrawal behavior with overdraft limit.
+ * Includes overdraft protection logic and basic deposit/withdraw functionality.
  */
+// Derived class for checking accounts
 class CheckingAccount : public BankAccount {
 private:
     double overdraftLimit;
@@ -102,65 +134,113 @@ public:
         : BankAccount(name, balance), overdraftLimit(overdraft) {
     }
 
+    // Adds funds to the account
     void deposit(double amount) override {
         balance += amount;
         addTransaction("Deposited: $" + formatAmount(amount));
     }
 
+    // Withdraws funds within allowed overdraft limit
     void withdraw(double amount) override {
-        if (amount > balance + overdraftLimit)
+        if (!OverdraftProtection::canWithdraw(balance, overdraftLimit, amount))
             throw runtime_error("Overdraft limit exceeded");
         balance -= amount;
         addTransaction("Withdrawn: $" + formatAmount(amount));
     }
 
+    // Displays account information
     void display() const override {
-        cout << "Checking Account: " << owner << " | Balance: $" << fixed
-            << setprecision(2) << balance << " | Overdraft Limit: $" << overdraftLimit << "\n";
+        cout << "Checking Account: " << owner << " | Balance: $" << fixed << setprecision(2) << balance
+            << " | Overdraft Limit: $" << overdraftLimit << "\n";
     }
 };
 
 /**
- * Manages multiple bank accounts, enabling polymorphic behavior.
+ * Struct representing a node in the customer linked list.
+ * Stores a unique bank account pointer and a link to the next node.
  */
-class AccountManager {
+// Linked list node for customer accounts
+struct CustomerNode {
+    unique_ptr<BankAccount> account;
+    CustomerNode* next;
+
+    CustomerNode(unique_ptr<BankAccount> acc)
+        : account(move(acc)), next(nullptr) {
+    }
+};
+
+/**
+ * Manages a singly linked list of bank accounts (customers).
+ * Supports add, delete, search, and display operations.
+ */
+// Linked list management for customer accounts
+class CustomerList {
 private:
-    vector<unique_ptr<BankAccount>> accounts;
+    CustomerNode* head;
 
 public:
-    /**
-     * Adds an account to the manager.
-     */
-    void addAccount(unique_ptr<BankAccount> account) {
-        accounts.push_back(move(account));
-    }
+    CustomerList() : head(nullptr) {}
 
-    /**
-     * Displays all accounts managed.
-     */
-    void displayAccounts() const {
-        for (const auto& acc : accounts) {
-            acc->display();
+    ~CustomerList() {
+        while (head) {
+            CustomerNode* temp = head;
+            head = head->next;
+            delete temp;
         }
     }
 
-    /**
-     * Retrieves an account by the owner's name.
-     */
-    BankAccount* getAccount(const string& name) {
-        for (const auto& acc : accounts) {
-            if (acc->getOwner() == name) {
-                return acc.get();
+    // Adds a new customer node to the front of the list
+    void addCustomer(unique_ptr<BankAccount> account) {
+        CustomerNode* newNode = new CustomerNode(move(account));
+        newNode->next = head;
+        head = newNode;
+    }
+
+    // Deletes a customer by name; returns true if found and removed
+    bool deleteCustomer(const string& name) {
+        CustomerNode* curr = head;
+        CustomerNode* prev = nullptr;
+
+        while (curr) {
+            if (curr->account->getOwner() == name) {
+                if (prev) prev->next = curr->next;
+                else head = curr->next;
+                delete curr;
+                return true;
             }
+            prev = curr;
+            curr = curr->next;
+        }
+        return false;
+    }
+
+    // Searches for a customer by name and returns a pointer to their account
+    BankAccount* getCustomerByName(const string& name) {
+        CustomerNode* curr = head;
+        while (curr) {
+            if (curr->account->getOwner() == name)
+                return curr->account.get();
+            curr = curr->next;
         }
         return nullptr;
     }
+
+    // Displays all accounts in the list
+    void displayAll() const {
+        CustomerNode* curr = head;
+        while (curr) {
+            curr->account->display();
+            curr = curr->next;
+        }
+    }
 };
 
 /**
- * Handles user interactions for banking operations.
+ * Interface for interacting with customer accounts.
+ * Supports various banking operations using runtime polymorphism.
  */
-void performBankingOperations(AccountManager& manager) {
+// Banking operations
+void performBankingOperations(CustomerList& customers) {
     string name;
     char choice;
     double amount;
@@ -170,23 +250,19 @@ void performBankingOperations(AccountManager& manager) {
         cin >> name;
         if (name == "exit") break;
 
-        BankAccount* account = manager.getAccount(name);
+        BankAccount* account = customers.getCustomerByName(name);
         if (!account) {
             cout << "Account not found.\n";
             continue;
         }
 
-        cout << "\nChoose operation: \nD - Deposit\nW - Withdraw\nS - Show Account\nH - Show Transaction History\nE - Exit\nChoice: ";
+        cout << "\nChoose operation: \nD - Deposit\nW - Withdraw\nS - Show Account\nH - Show Transaction History\nI - Apply Interest (Savings Only)\nE - Exit\nChoice: ";
         cin >> choice;
 
         switch (choice) {
         case 'D': case 'd':
             cout << "Enter deposit amount: ";
             cin >> amount;
-            if (amount <= 0) {
-                cout << "Invalid deposit amount.\n";
-                continue;
-            }
             account->deposit(amount);
             cout << "Deposit successful.\n";
             break;
@@ -194,10 +270,6 @@ void performBankingOperations(AccountManager& manager) {
         case 'W': case 'w':
             cout << "Enter withdrawal amount: ";
             cin >> amount;
-            if (amount <= 0) {
-                cout << "Invalid withdrawal amount.\n";
-                continue;
-            }
             try {
                 account->withdraw(amount);
                 cout << "Withdrawal successful.\n";
@@ -215,6 +287,18 @@ void performBankingOperations(AccountManager& manager) {
             account->displayTransactionHistory();
             break;
 
+        case 'I': case 'i': {
+            SavingsAccount* savings = dynamic_cast<SavingsAccount*>(account);
+            if (savings) {
+                savings->applyInterest();
+                cout << "Interest applied.\n";
+            }
+            else {
+                cout << "Interest can only be applied to savings accounts.\n";
+            }
+            break;
+        }
+
         case 'E': case 'e':
             return;
 
@@ -224,13 +308,16 @@ void performBankingOperations(AccountManager& manager) {
     }
 }
 
+/**
+ * Entry point: Initializes customers and starts the banking interface.
+ */
 int main() {
-    AccountManager manager;
-    manager.addAccount(make_unique<SavingsAccount>("Laurie", 5000, 2.5));
-    manager.addAccount(make_unique<CheckingAccount>("Larry", 1000, 500));
-    manager.addAccount(make_unique<SavingsAccount>("David", 10000, 2.5));
-    manager.addAccount(make_unique<CheckingAccount>("Luis", 2000, 500));
+    CustomerList customers;
+    customers.addCustomer(make_unique<SavingsAccount>("Laurie", 5000, 2.5));
+    customers.addCustomer(make_unique<CheckingAccount>("Larry", 1000, 500));
+    customers.addCustomer(make_unique<SavingsAccount>("David", 10000, 2.5));
+    customers.addCustomer(make_unique<CheckingAccount>("Luis", 2000, 500));
 
-    performBankingOperations(manager);
+    performBankingOperations(customers);
     return 0;
 }
